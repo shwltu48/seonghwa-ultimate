@@ -17,7 +17,7 @@ def court(blank=False):
         for label,x,y in positions:
             x,y=x*6,y*2.7
             players += f'<circle class="attacker" cx="{x}" cy="{y}" r="17"/><text class="at" x="{x}" y="{y+5}" text-anchor="middle">{label}</text>'
-        for label,x,y in [('①',36,55),('②',66,64)]:
+        for label,x,y in [('①',33,77),('②',66,64)]:
             x,y=x*6,y*2.7
             players += f'<rect class="defender" x="{x-16}" y="{y-16}" width="32" height="32"/><text class="dt" x="{x}" y="{y+5}" text-anchor="middle">{label}</text>'
     return f'''<div class="court-wrap"><svg class="court" viewBox="0 0 600 270" role="img" aria-label="얼티미트 전술 코트"><rect class="line" x="2" y="2" width="596" height="266"/><rect class="zone" x="2" y="2" width="76" height="266"/><rect class="zone" x="522" y="2" width="76" height="266"/><text x="560" y="22" text-anchor="middle" font-size="10">공격 →</text><text x="560" y="39" text-anchor="middle" font-size="10">엔드존</text>{players}</svg></div>'''

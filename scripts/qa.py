@@ -49,6 +49,15 @@ try:
             assert len(page.locator('#tactic-feedback').inner_text())>40
         page.locator('.court [data-pick="B"]').focus();page.keyboard.press('Enter')
         assert 'B가 유리' in page.locator('#tactic-feedback').inner_text()
+        clear=page.locator('.court').evaluate('''court=>{
+          const center=e=>{const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,r:r.width/2}};
+          const a=center(court.querySelector('.thrower')), b=center(court.querySelector('[data-pick="B"]'));
+          return [...court.querySelectorAll('.defender')].every(e=>{const d=center(e),dx=b.x-a.x,dy=b.y-a.y;
+            const t=Math.max(0,Math.min(1,((d.x-a.x)*dx+(d.y-a.y)*dy)/(dx*dx+dy*dy)));
+            return Math.hypot(d.x-a.x-t*dx,d.y-a.y-t*dy)>d.r+8;
+          });
+        }''')
+        assert clear,'Recommended B passing lane must be visibly clear of defenders'
         page.screenshot(path=str(OUT/'tactics.png'),full_page=True)
         page.locator('#prev').click();assert '정확해요' in page.locator('#feedback-0').inner_text()
         page.locator('#next').click();assert page.locator('.court [data-pick="B"]').get_attribute('aria-pressed')=='true'
