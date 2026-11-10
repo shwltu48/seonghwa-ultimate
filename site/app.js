@@ -27,10 +27,11 @@ function render(){
   document.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('click',()=>pick(b.dataset.pick)));
   if(stage===1)Object.entries(answers).forEach(([i,v])=>answer(Number(i),v));
   if(stage===2&&choice)pick(choice);
+  window.dispatchEvent(new CustomEvent('lesson:render',{detail:{stage}}));
 }
-function answer(i,value){answers[i]=value;document.querySelectorAll(`[data-quiz="${i}"]`).forEach(b=>b.setAttribute('aria-pressed',String((b.dataset.value==='true')===value)));const q=D.quiz[i];$(`feedback-${i}`).innerHTML=`<strong>${value===q.answer?'정확해요.':'다시 살펴봐요.'} 정답 ${q.answer?'O':'X'}</strong>${esc(q.why)}`;}
-function pick(id){choice=id;const c=D.choices.find(c=>c.id===id);document.querySelectorAll('[data-pick]').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.pick===id));b.classList.toggle('selected',b.dataset.pick===id);});$('pass-path').setAttribute('d',`M23 39.2 L${c.x} ${c.y*.56}`);$('tactic-feedback').textContent=c.feedback;}
-function go(n,focus=true){stage=n;render();if(focus){$('stage').focus({preventScroll:true});$('lesson').scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});}}
+function answer(i,value){answers[i]=value;document.querySelectorAll(`[data-quiz="${i}"]`).forEach(b=>b.setAttribute('aria-pressed',String((b.dataset.value==='true')===value)));const q=D.quiz[i];$(`feedback-${i}`).innerHTML=`<strong>${value===q.answer?'정확해요.':'다시 살펴봐요.'} 정답 ${q.answer?'O':'X'}</strong>${esc(q.why)}`;window.dispatchEvent(new CustomEvent('lesson:answer',{detail:{index:i,value}}));}
+function pick(id){choice=id;const c=D.choices.find(c=>c.id===id);document.querySelectorAll('[data-pick]').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.pick===id));b.classList.toggle('selected',b.dataset.pick===id);});$('pass-path').setAttribute('d',`M23 39.2 L${c.x} ${c.y*.56}`);$('tactic-feedback').textContent=c.feedback;window.dispatchEvent(new CustomEvent('lesson:choice',{detail:{id}}));}
+function go(n,focus=true){const previous=stage;stage=n;render();window.dispatchEvent(new CustomEvent('lesson:navigate',{detail:{stage,previous}}));if(focus){$('stage').focus({preventScroll:true});$('lesson').scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});}}
 $('goals').innerHTML=D.goals.map(g=>`<li>${g}</li>`).join('');
 $('steps').innerHTML=D.timeline.map((t,i)=>`<button data-step="${i}"><span class="step-num">${t.n} / ${t.minutes} MIN</span><span>${t.title}</span></button>`).join('');
 document.querySelectorAll('[data-step]').forEach(b=>b.addEventListener('click',()=>go(Number(b.dataset.step))));
@@ -38,6 +39,7 @@ $('standards').innerHTML=D.standards.map(s=>`<div class="standard"><strong>[${s.
 $('sources').innerHTML=`<div class="sources">${D.sources.map(s=>`<a href="${s.url}" target="_blank" rel="noopener noreferrer">${s.label} ↗</a><p>${s.note}</p>`).join('')}</div>`;
 $('prev').addEventListener('click',()=>{if(stage>0)go(stage-1)});$('next').addEventListener('click',()=>{if(stage<4)go(stage+1)});
 $('present').addEventListener('click',()=>{const active=document.body.classList.toggle('present');$('present').setAttribute('aria-pressed',String(active));$('present').textContent=active?'기본 크기':'화면 확대';});
-$('reset').addEventListener('click',()=>$('reset-dialog').showModal());$('cancel-reset').addEventListener('click',()=>$('reset-dialog').close());$('confirm-reset').addEventListener('click',()=>{answers={};choice=null;$('reset-dialog').close();go(0)});
+$('reset').addEventListener('click',()=>$('reset-dialog').showModal());$('cancel-reset').addEventListener('click',()=>$('reset-dialog').close());$('confirm-reset').addEventListener('click',()=>{answers={};choice=null;$('reset-dialog').close();window.dispatchEvent(new CustomEvent('lesson:reset'));go(0)});
 $('print-worksheet').addEventListener('click',()=>{window.open('print.html?type=worksheet&print=1','_blank','noopener,noreferrer');});
+window.lessonControl={getStage:()=>stage,navigate:go,setAnswer:answer,setTarget:pick};
 render();

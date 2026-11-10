@@ -1,5 +1,5 @@
 """Browser, download and PDF layout acceptance checks. Artifacts stay in qa/."""
-import functools,hashlib,http.server,json,threading,sys
+import functools,hashlib,http.server,json,threading,sys,time
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from pypdf import PdfReader
@@ -74,13 +74,52 @@ try:
         assert page.locator('#prev').is_disabled()
         page.locator('[data-step="1"]').click();assert page.locator('#feedback-0').inner_text()==''
         page.locator('[data-step="2"]').click();assert '아직 선택하지' in page.locator('#tactic-feedback').inner_text()
+        assert page.locator('#challenge-dock .challenge-open').count()==3
+        for level in ['보충','기본','도전']:
+            page.locator(f'.challenge-open[data-challenge="{level}"]').click()
+            page.locator('#challenge-detail .challenge-answer button').nth(0).click()
+            page.locator('#challenge-reason').fill('수비 위치와 열린 패스 길을 함께 보고 안전한 대안을 선택한다.')
+            page.locator('#challenge-detail button.dark').click()
+            assert page.locator('.challenge-feedback').inner_text()
+        assert '도전 3/3' in page.locator('.ledger-stats').inner_text()
+        results.append('Three leveled tactical challenges: reason-first choices and explanatory feedback')
         results.append('Presentation toggle, all five stages, teacher disclosure, reset cancel/confirm')
-        for filename,expected in [('learning',2),('worksheet',2),('teacher',2),('complete-set',6)]:
+        page.locator('#clock-toggle').click();assert page.locator('#clock-toggle').get_attribute('aria-pressed')=='true'
+        before=page.locator('#clock-display').inner_text();page.wait_for_timeout(1150);after=page.locator('#clock-display').inner_text()
+        assert before!=after,(before,after)
+        page.locator('#clock-toggle').click();assert page.locator('#clock-toggle').get_attribute('aria-pressed')=='false'
+        page.locator('#stage-complete').click();assert '1 / 5 단계 기록' in page.locator('#stage-completion-count').inner_text()
+        page.locator('#notebook-fields textarea[name="firstReason"]').fill('먼저 수비의 위치를 살피고 동료와 패스 거리를 생각했다.')
+        page.locator('#notebook-fields textarea[name="route"]').fill('A가 중앙을 열고 B가 가까운 공간으로 이동한 뒤 C가 엔드존에 들어간다.')
+        page.locator('#notebook-fields select[data-rubric]').nth(0).select_option('developing')
+        assert '[9체02-12]' in page.locator('.rubric-card').first.inner_text()
+        assert '점수' in page.locator('#rubric-feedback').inner_text()
+        savedStage=page.locator('#counter').inner_text()
+        page.reload(wait_until='networkidle')
+        assert page.locator('#notebook-fields textarea[name="firstReason"]').input_value().startswith('먼저 수비')
+        assert page.locator('#notebook-fields textarea[name="route"]').input_value().startswith('A가 중앙')
+        assert page.locator('#counter').inner_text()==savedStage
+        assert '도전 3/3' in page.locator('.ledger-stats').inner_text()
+        with page.expect_download() as backup_info:page.locator('#backup-export').click()
+        backup_path=OUT/'student-record-backup.json';backup_info.value.save_as(backup_path)
+        backup=json.loads(backup_path.read_text(encoding='utf-8'));assert backup['version']==2 and '수비' in backup['notes']['firstReason']
+        page.locator('#notebook-fields textarea[name="firstReason"]').fill('다시 작성한 임시 기록.')
+        with page.expect_file_chooser() as chooser_info:
+            page.locator('.import-button').click()
+        chooser_info.value.set_files(str(backup_path));page.wait_for_function("document.querySelector('[name=firstReason]').value.startsWith('먼저 수비')")
+        results.append('Phase clock, manual progress, criteria-linked unscored observation, local autosave and JSON round-trip')
+        with context.expect_page() as notebook_popup_info:page.locator('#notebook-print').click()
+        notebook_popup=notebook_popup_info.value;notebook_popup.wait_for_load_state('networkidle')
+        notebook_popup.wait_for_timeout(250)
+        assert '먼저 수비' in notebook_popup.locator('#print-notebook-root').inner_text()
+        notebook_popup.locator('#print-button').click();notebook_popup.wait_for_function('window.__printed===true')
+        notebook_popup.close();results.append('Dynamic personal notebook prints to paper/PDF with escaped text')
+        for filename,expected in [('learning',2),('worksheet',2),('teacher',2),('extension',2),('complete-set',8)]:
             with page.expect_download() as info:page.locator(f'.download-card[href="pdf/{filename}.pdf"]').click()
             dest=OUT/f'download-{filename}.pdf';info.value.save_as(dest)
             assert len(PdfReader(dest).pages)==expected
             assert hashlib.sha256(dest.read_bytes()).digest()==hashlib.sha256((ROOT/'site'/'pdf'/f'{filename}.pdf').read_bytes()).digest()
-        results.append('Four real PDF downloads match published source files and page counts')
+        results.append('Five real PDF downloads, including two-page extension and eight-page complete set')
         with context.expect_page() as popup_info:page.locator('#print-worksheet').click()
         popup=popup_info.value;popup.wait_for_load_state('networkidle');popup.evaluate('document.fonts.ready')
         assert popup.locator('.sheet').count()==2
@@ -98,7 +137,7 @@ try:
         page.emulate_media(reduced_motion='reduce')
         assert page.evaluate('getComputedStyle(document.documentElement).scrollBehavior')=='auto'
         page.set_viewport_size({'width':1000,'height':900})
-        for kind in ['learning','worksheet','teacher']:
+        for kind in ['learning','worksheet','teacher','extension']:
             page.goto(base+f'print.html?type={kind}',wait_until='networkidle');page.evaluate('document.fonts.ready')
             layout=page.locator('.sheet').evaluate_all('els=>els.map(e=>({bottom:e.querySelector(".sheet-content").getBoundingClientRect().bottom,footer:e.querySelector(".page-footer").getBoundingClientRect().top}))')
             assert all(v['bottom']<v['footer']-5 for v in layout),(kind,layout)
@@ -107,7 +146,7 @@ try:
         assert not bad,bad
         results.append('No browser JavaScript/console errors or HTTP errors during tested flows')
         context.close();browser.close()
-    for kind in ['learning','worksheet','teacher']:
+    for kind in ['learning','worksheet','teacher','extension']:
         doc=fitz.open(ROOT/'site'/'pdf'/f'{kind}.pdf')
         for i,pg in enumerate(doc):
             assert abs(pg.rect.width-595.28)<2 and abs(pg.rect.height-841.89)<2
@@ -127,7 +166,7 @@ try:
                     descendants=font.get('/DescendantFonts',[font])
                     assert all(any(k in f.get_object()['/FontDescriptor'].get_object() for k in ['/FontFile','/FontFile2','/FontFile3']) for f in descendants)
             pg.get_pixmap(matrix=fitz.Matrix(1,1)).save(OUT/f'{kind}-{i+1}.png')
-    results.append('PDF A4 sizing, Korean text extraction and self-contained embedded font glyphs on all six pages')
+    results.append('PDF A4 sizing, Korean text extraction and self-contained glyphs on all eight pages')
     report={'base':base,'checks':results,'result':'PASS'}
     (OUT/('live-results.json' if len(sys.argv)>1 else 'local-results.json')).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(report,ensure_ascii=False,indent=2))

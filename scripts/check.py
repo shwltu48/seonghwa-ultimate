@@ -16,7 +16,7 @@ for path in site.rglob('*.html'):
         parsed=urlsplit(target)
         if parsed.scheme or not parsed.path:continue
         assert (path.parent/unquote(parsed.path)).is_file(),f'Missing {target} in {path.name}'
-for kind in ['learning','worksheet','teacher','complete-set']:
+for kind in ['learning','worksheet','teacher','extension','complete-set']:
     file=site/'pdf'/f'{kind}.pdf'
     assert file.stat().st_size>10000 and file.read_bytes().startswith(b'%PDF-')
 assert (site/'assets'/'NotoSansKR.ttf').stat().st_size>100000
